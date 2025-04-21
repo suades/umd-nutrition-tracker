@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { AppHeader } from "@/components/app-header"
@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Plus, Search, Filter, X } from "lucide-react"
+import { ArrowLeft, Plus, Search, Filter, X, ExternalLink } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { getSupabaseBrowserClient } from "@/lib/supabase"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import debounce from "lodash.debounce"
 
 type Food = {
   id: number
@@ -25,6 +26,7 @@ type Food = {
   total_carbohydrates: number
   total_fat: number
   serving_size: string
+  nutrition_url?: string
 }
 
 type CustomMeal = {
@@ -38,6 +40,8 @@ type CustomMeal = {
   total_fat: number
 }
 
+const ITEMS_PER_PAGE = 10
+
 export default function LogFoodPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -45,14 +49,21 @@ export default function LogFoodPage() {
 
   const [selectedMeal, setSelectedMeal] = useState(mealParam || "breakfast")
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [addedFood, setAddedFood] = useState<null | { name: string; meal: string }>(null)
   const [error, setError] = useState("")
   const [foods, setFoods] = useState<Food[]>([])
   const [customMeals, setCustomMeals] = useState<CustomMeal[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
   const [diningHalls, setDiningHalls] = useState<string[]>([])
   const [selectedDiningHall, setSelectedDiningHall] = useState<string | null>(null)
+
+  // Pagination
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [displayedItems, setDisplayedItems] = useState<(Food | (CustomMeal & { isCustomMeal: boolean }))[]>([])
 
   // Filter states
   const [showFilters, setShowFilters] = useState(false)
@@ -60,6 +71,24 @@ export default function LogFoodPage() {
   const [maxFat, setMaxFat] = useState(50)
   const [maxCarbs, setMaxCarbs] = useState(100)
   const [showCustomMeals, setShowCustomMeals] = useState(true)
+
+  // Debounced search function
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedSearch = useCallback(
+    debounce((query: string) => {
+      setDebouncedSearchQuery(query)
+      setPage(1) // Reset to first page on new search
+      setIsSearching(false)
+    }, 300),
+    [],
+  )
+
+  useEffect(() => {
+    if (searchQuery !== debouncedSearchQuery) {
+      setIsSearching(true)
+      debouncedSearch(searchQuery)
+    }
+  }, [searchQuery, debouncedSearch, debouncedSearchQuery])
 
   useEffect(() => {
     const fetchFoods = async () => {
@@ -107,6 +136,72 @@ export default function LogFoodPage() {
 
     fetchFoods()
   }, [router])
+
+  // Filter and paginate items
+  useEffect(() => {
+    // Filter foods based on search query and filters
+    const filteredFoods = foods.filter((food) => {
+      // Apply search query
+      const matchesSearch =
+        debouncedSearchQuery === "" ||
+        food.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (food.dining_hall && food.dining_hall.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
+
+      // Apply dining hall filter
+      const matchesDiningHall =
+        !selectedDiningHall ||
+        selectedDiningHall === "all" ||
+        food.dining_hall?.toLowerCase() === selectedDiningHall?.toLowerCase()
+
+      // Apply numeric filters
+      const matchesCalories = food.calories_per_serving <= maxCalories
+      const matchesFat = food.total_fat <= maxFat
+      const matchesCarbs = food.total_carbohydrates <= maxCarbs
+
+      return matchesSearch && matchesDiningHall && matchesCalories && matchesFat && matchesCarbs
+    })
+
+    // Filter custom meals based on search query
+    const filteredCustomMeals = customMeals.filter((meal) => {
+      if (!showCustomMeals) return false
+
+      // Apply search query
+      const matchesSearch =
+        debouncedSearchQuery === "" || meal.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+
+      // Apply numeric filters
+      const matchesCalories = meal.total_calories <= maxCalories
+      const matchesFat = meal.total_fat <= maxFat
+      const matchesCarbs = meal.total_carbs <= maxCarbs
+
+      return matchesSearch && matchesCalories && matchesFat && matchesCarbs
+    })
+
+    // Combine filtered foods and custom meals
+    const allFilteredItems = [
+      ...filteredCustomMeals.map((meal) => ({ ...meal, isCustomMeal: true })),
+      ...filteredFoods.map((food) => ({ ...food, isCustomMeal: false })),
+    ]
+
+    // Paginate results
+    const paginatedItems = allFilteredItems.slice(0, page * ITEMS_PER_PAGE)
+    setDisplayedItems(paginatedItems)
+    setHasMore(paginatedItems.length < allFilteredItems.length)
+  }, [
+    debouncedSearchQuery,
+    selectedDiningHall,
+    maxCalories,
+    maxFat,
+    maxCarbs,
+    showCustomMeals,
+    foods,
+    customMeals,
+    page,
+  ])
+
+  const loadMore = () => {
+    setPage((prevPage) => prevPage + 1)
+  }
 
   const handleAddFood = async (food: Food | CustomMeal, isCustomMeal = false) => {
     try {
@@ -189,47 +284,11 @@ export default function LogFoodPage() {
     }
   }
 
-  // Filter foods based on search query and filters
-  const filteredFoods = foods.filter((food) => {
-    // Apply search query
-    const matchesSearch =
-      searchQuery === "" ||
-      food.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (food.dining_hall && food.dining_hall.toLowerCase().includes(searchQuery.toLowerCase()))
-
-    // Apply dining hall filter
-    const matchesDiningHall = !selectedDiningHall || selectedDiningHall === "all" || food.dining_hall?.toLowerCase() === selectedDiningHall?.toLowerCase()
-
-
-
-    // Apply numeric filters
-    const matchesCalories = food.calories_per_serving <= maxCalories
-    const matchesFat = food.total_fat <= maxFat
-    const matchesCarbs = food.total_carbohydrates <= maxCarbs
-
-    return matchesSearch && matchesDiningHall && matchesCalories && matchesFat && matchesCarbs
-  })
-
-  // Filter custom meals based on search query
-  const filteredCustomMeals = customMeals.filter((meal) => {
-    if (!showCustomMeals) return false
-
-    // Apply search query
-    const matchesSearch = searchQuery === "" || meal.name.toLowerCase().includes(searchQuery.toLowerCase())
-
-    // Apply numeric filters
-    const matchesCalories = meal.total_calories <= maxCalories
-    const matchesFat = meal.total_fat <= maxFat
-    const matchesCarbs = meal.total_carbs <= maxCarbs
-
-    return matchesSearch && matchesCalories && matchesFat && matchesCarbs
-  })
-
-  // Combine filtered foods and custom meals
-  const allFilteredItems = [
-    ...filteredCustomMeals.map((meal) => ({ ...meal, isCustomMeal: true })),
-    ...filteredFoods.map((food) => ({ ...food, isCustomMeal: false })),
-  ]
+  const openNutritionPage = (url?: string) => {
+    if (url) {
+      window.open(url, "_blank")
+    }
+  }
 
   if (isLoading) {
     return (
@@ -406,69 +465,112 @@ export default function LogFoodPage() {
               )}
             </div>
 
-            <div className="space-y-4">
-              {allFilteredItems.length > 0 ? (
-                allFilteredItems.map((item) => (
-                  <Card key={item.id} className="overflow-hidden">
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-medium flex items-center">
-                            {item.name}
-                            {item.isCustomMeal && (
-                              <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                                Custom Meal
-                              </span>
-                            )}
-                          </h3>
-                          {!item.isCustomMeal && (
-                            <p className="text-sm text-muted-foreground">
-                              {(item as Food).dining_hall || "Unknown Location"} • {(item as Food).serving_size}
-                            </p>
-                          )}
+            {isSearching ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Searching...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {displayedItems.length > 0 ? (
+                  <>
+                    {displayedItems.map((item) => (
+                      <Card
+                        key={item.id}
+                        className="overflow-hidden cursor-pointer"
+                        onClick={() => {
+                          if (!item.isCustomMeal && (item as Food).nutrition_url) {
+                            openNutritionPage((item as Food).nutrition_url)
+                          }
+                        }}
+                      >
+                        <div className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h3 className="font-medium flex items-center">
+                                {item.name}
+                                {item.isCustomMeal ? (
+                                  <span className="ml-2 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                                    Custom Meal
+                                  </span>
+                                ) : (
+                                  !item.isCustomMeal &&
+                                  (item as Food).nutrition_url && (
+                                    <ExternalLink className="ml-2 h-3 w-3 text-muted-foreground" />
+                                  )
+                                )}
+                              </h3>
+                              {!item.isCustomMeal && (
+                                <p className="text-sm text-muted-foreground">
+                                  {(item as Food).dining_hall || "Unknown Location"} • {(item as Food).serving_size}
+                                </p>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleAddFood(item, item.isCustomMeal)
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                          <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
+                            <div>
+                              <p className="font-medium">
+                                {item.isCustomMeal
+                                  ? (item as CustomMeal).total_calories
+                                  : (item as Food).calories_per_serving}
+                              </p>
+                              <p className="text-xs text-muted-foreground">calories</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {item.isCustomMeal
+                                  ? (item as CustomMeal).total_protein.toFixed(1)
+                                  : (item as Food).protein.toFixed(1)}
+                                g
+                              </p>
+                              <p className="text-xs text-muted-foreground">protein</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {item.isCustomMeal
+                                  ? (item as CustomMeal).total_carbs.toFixed(1)
+                                  : (item as Food).total_carbohydrates.toFixed(1)}
+                                g
+                              </p>
+                              <p className="text-xs text-muted-foreground">carbs</p>
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {item.isCustomMeal
+                                  ? (item as CustomMeal).total_fat.toFixed(1)
+                                  : (item as Food).total_fat.toFixed(1)}
+                                g
+                              </p>
+                              <p className="text-xs text-muted-foreground">fat</p>
+                            </div>
+                          </div>
                         </div>
-                        <Button size="sm" onClick={() => handleAddFood(item, item.isCustomMeal)}>
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add
+                      </Card>
+                    ))}
+                    {hasMore && (
+                      <div className="flex justify-center pt-4">
+                        <Button onClick={loadMore} variant="outline">
+                          Load More
                         </Button>
                       </div>
-                      <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
-                        <div>
-                          <p className="font-medium">
-                            {item.isCustomMeal
-                              ? (item as CustomMeal).total_calories
-                              : (item as Food).calories_per_serving}
-                          </p>
-                          <p className="text-xs text-muted-foreground">calories</p>
-                        </div>
-                        <div>
-                          <p className="font-medium">
-                            {item.isCustomMeal ? (item as CustomMeal).total_protein : (item as Food).protein}g
-                          </p>
-                          <p className="text-xs text-muted-foreground">protein</p>
-                        </div>
-                        <div>
-                          <p className="font-medium">
-                            {item.isCustomMeal ? (item as CustomMeal).total_carbs : (item as Food).total_carbohydrates}g
-                          </p>
-                          <p className="text-xs text-muted-foreground">carbs</p>
-                        </div>
-                        <div>
-                          <p className="font-medium">
-                            {item.isCustomMeal ? (item as CustomMeal).total_fat : (item as Food).total_fat}g
-                          </p>
-                          <p className="text-xs text-muted-foreground">fat</p>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No foods found matching your search</p>
-                </div>
-              )}
-            </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No foods found matching your search</p>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
           <CardFooter>
             <Button className="w-full" asChild>

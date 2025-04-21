@@ -70,18 +70,18 @@ export default function DashboardPage() {
 
   // Calculate macro targets based on TDEE
   const calculateMacroTargets = (tdee: number, weight: number) => {
-    const protein = weight * 1.0;         // 1g per lb
-    const fat = weight * 0.4;             // 0.4g per lb
-    const proteinCal = protein * 4;
-    const fatCal = fat * 9;
-    const remainingCal = tdee - (proteinCal + fatCal);
-    const carbs = remainingCal / 4;       // 4 cal per gram
+    const protein = weight * 1.0 // 1g per lb
+    const fat = weight * 0.4 // 0.4g per lb
+    const proteinCal = protein * 4
+    const fatCal = fat * 9
+    const remainingCal = tdee - (proteinCal + fatCal)
+    const carbs = remainingCal / 4 // 4 cal per gram
 
     return {
-        protein: Math.round(protein),
-        fat: Math.round(fat),
-        carbs: Math.round(carbs)
-    };
+      protein: Math.round(protein),
+      fat: Math.round(fat),
+      carbs: Math.round(carbs),
+    }
   }
 
   useEffect(() => {
