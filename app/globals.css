@@ -44,3 +44,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes wipe-left {
+  0% {
+    transform: translateX(-100%);
+    background-color: hsl(var(--primary));
+  }
+  100% {
+    transform: translateX(0);
+    background-color: transparent;
+  }
+}
+
+.animate-wipe-left {
+  animation: wipe-left 0.5s ease-out forwards;
+}

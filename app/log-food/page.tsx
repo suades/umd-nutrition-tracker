@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Plus, Search, Filter, X, ExternalLink } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ArrowLeft, Plus, Search, Filter, X, ExternalLink, Check } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -40,6 +39,14 @@ type CustomMeal = {
   total_fat: number
 }
 
+type FoodItemWithStatus =
+  | Food
+  | (CustomMeal & {
+      isCustomMeal: boolean
+      isAdding?: boolean
+      isAdded?: boolean
+    })
+
 const ITEMS_PER_PAGE = 10
 
 export default function LogFoodPage() {
@@ -50,8 +57,6 @@ export default function LogFoodPage() {
   const [selectedMeal, setSelectedMeal] = useState(mealParam || "breakfast")
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
-  const [showConfirmation, setShowConfirmation] = useState(false)
-  const [addedFood, setAddedFood] = useState<null | { name: string; meal: string }>(null)
   const [error, setError] = useState("")
   const [foods, setFoods] = useState<Food[]>([])
   const [customMeals, setCustomMeals] = useState<CustomMeal[]>([])
@@ -63,7 +68,7 @@ export default function LogFoodPage() {
   // Pagination
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
-  const [displayedItems, setDisplayedItems] = useState<(Food | (CustomMeal & { isCustomMeal: boolean }))[]>([])
+  const [displayedItems, setDisplayedItems] = useState<FoodItemWithStatus[]>([])
 
   // Filter states
   const [showFilters, setShowFilters] = useState(false)
@@ -203,8 +208,13 @@ export default function LogFoodPage() {
     setPage((prevPage) => prevPage + 1)
   }
 
-  const handleAddFood = async (food: Food | CustomMeal, isCustomMeal = false) => {
+  const handleAddFood = async (item: FoodItemWithStatus, index: number) => {
     try {
+      // Update UI state first for immediate feedback
+      const updatedItems = [...displayedItems]
+      updatedItems[index] = { ...updatedItems[index], isAdding: true }
+      setDisplayedItems(updatedItems)
+
       const supabase = getSupabaseBrowserClient()
 
       // Get current user
@@ -256,12 +266,12 @@ export default function LogFoodPage() {
       // Add food entry
       const { error: foodError } = await supabase.from("food_entries").insert({
         diary_id: diaryId,
-        name: food.name,
-        calories: isCustomMeal ? (food as CustomMeal).total_calories : (food as Food).calories_per_serving,
-        protein: isCustomMeal ? (food as CustomMeal).total_protein : (food as Food).protein,
-        carbs: isCustomMeal ? (food as CustomMeal).total_carbs : (food as Food).total_carbohydrates,
-        fat: isCustomMeal ? (food as CustomMeal).total_fat : (food as Food).total_fat,
-        serving_size: isCustomMeal ? "1 meal" : (food as Food).serving_size,
+        name: item.name,
+        calories: item.isCustomMeal ? (item as CustomMeal).total_calories : (item as Food).calories_per_serving,
+        protein: item.isCustomMeal ? (item as CustomMeal).total_protein : (item as Food).protein,
+        carbs: item.isCustomMeal ? (item as CustomMeal).total_carbs : (item as Food).total_carbohydrates,
+        fat: item.isCustomMeal ? (item as CustomMeal).total_fat : (item as Food).total_fat,
+        serving_size: item.isCustomMeal ? "1 meal" : (item as Food).serving_size,
         meal_type: selectedMeal,
       })
 
@@ -269,18 +279,23 @@ export default function LogFoodPage() {
         throw foodError
       }
 
-      setAddedFood({
-        name: food.name,
-        meal: selectedMeal === "breakfast" ? "Breakfast" : selectedMeal === "lunch" ? "Lunch" : "Dinner",
-      })
-      setShowConfirmation(true)
+      // Update UI to show success
+      updatedItems[index] = { ...updatedItems[index], isAdding: false, isAdded: true }
+      setDisplayedItems(updatedItems)
 
-      // Auto-close after 2 seconds
+      // Reset button after delay
       setTimeout(() => {
-        setShowConfirmation(false)
+        const resetItems = [...displayedItems]
+        resetItems[index] = { ...resetItems[index], isAdded: false }
+        setDisplayedItems(resetItems)
       }, 2000)
     } catch (error: any) {
       setError(error.message || "Failed to add food")
+
+      // Reset button state on error
+      const updatedItems = [...displayedItems]
+      updatedItems[index] = { ...updatedItems[index], isAdding: false, isAdded: false }
+      setDisplayedItems(updatedItems)
     }
   }
 
@@ -473,7 +488,7 @@ export default function LogFoodPage() {
               <div className="space-y-4">
                 {displayedItems.length > 0 ? (
                   <>
-                    {displayedItems.map((item) => (
+                    {displayedItems.map((item, index) => (
                       <Card
                         key={item.id}
                         className="overflow-hidden cursor-pointer"
@@ -507,13 +522,29 @@ export default function LogFoodPage() {
                             </div>
                             <Button
                               size="sm"
+                              className={`transition-all duration-300 relative overflow-hidden ${
+                                item.isAdded ? "bg-transparent border border-green-500 text-green-500" : ""
+                              }`}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                handleAddFood(item, item.isCustomMeal)
+                                handleAddFood(item, index)
                               }}
+                              disabled={item.isAdding || item.isAdded}
                             >
-                              <Plus className="h-4 w-4 mr-1" />
-                              Add
+                              {item.isAdding ? (
+                                <span className="animate-pulse">Adding...</span>
+                              ) : item.isAdded ? (
+                                <>
+                                  <div className="absolute inset-0 bg-transparent border-green-500 animate-wipe-left"></div>
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Done
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Add
+                                </>
+                              )}
                             </Button>
                           </div>
                           <div className="mt-2 grid grid-cols-4 gap-2 text-center text-sm">
@@ -579,17 +610,6 @@ export default function LogFoodPage() {
           </CardFooter>
         </Card>
       </main>
-
-      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Food Added!</DialogTitle>
-            <DialogDescription>
-              {addedFood?.name} has been added to your {addedFood?.meal}.
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

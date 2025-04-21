@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { AppHeader } from "@/components/app-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { CalendarDays, Utensils, Weight, Settings } from "lucide-react"
+import { CalendarDays, Utensils, Weight, Settings, Check } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase"
 import { Line } from "react-chartjs-2"
 import {
@@ -59,7 +59,8 @@ export default function DashboardPage() {
     fat: 0,
   })
   const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([])
-  const [streakData, setStreakData] = useState<{ date: string; logged: boolean }[]>([])
+  const [streakData, setStreakData] = useState<{ date: string; logged: boolean; day: string }[]>([])
+  const [activeButton, setActiveButton] = useState<string | null>(null)
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -190,19 +191,19 @@ export default function DashboardPage() {
 
         setWeightHistory(weightEntries || [])
 
-        // Calculate streak data (last 7 days)
-        const last7Days = Array.from({ length: 7 }, (_, i) => {
+        // Calculate streak data (last 8 days)
+        const last8Days = Array.from({ length: 8 }, (_, i) => {
           const date = new Date()
           date.setDate(date.getDate() - i)
           return date.toISOString().split("T")[0]
         }).reverse()
 
-        // Get diary entries for the last 7 days
+        // Get diary entries for the last 8 days
         const { data: diaryEntries, error: streakError } = await supabase
           .from("diary_entries")
           .select("date, id")
           .eq("user_id", authData.user.id)
-          .in("date", last7Days)
+          .in("date", last8Days)
 
         if (streakError) {
           throw streakError
@@ -228,11 +229,16 @@ export default function DashboardPage() {
           diaryEntries?.filter((entry) => diaryIdsWithFood.has(entry.id)).map((entry) => entry.date),
         )
 
-        // Create streak data
-        const streak = last7Days.map((date) => ({
-          date,
-          logged: diaryDatesWithFood.has(date),
-        }))
+        // Create streak data with day names
+        const streak = last8Days.map((date) => {
+          const dayDate = new Date(date)
+          const dayName = dayDate.toLocaleDateString("en-US", { weekday: "short" })
+          return {
+            date,
+            logged: diaryDatesWithFood.has(date),
+            day: dayName,
+          }
+        })
 
         setStreakData(streak)
       } catch (error: any) {
@@ -245,6 +251,14 @@ export default function DashboardPage() {
 
     fetchUserData()
   }, [router])
+
+  const handleButtonClick = (destination: string) => {
+    setActiveButton(destination)
+    // Navigate after a short delay to allow animation to play
+    setTimeout(() => {
+      router.push(destination)
+    }, 300)
+  }
 
   if (isLoading) {
     return (
@@ -300,23 +314,6 @@ export default function DashboardPage() {
         borderColor: "#FFD200",
         backgroundColor: "rgba(255, 210, 0, 0.2)",
         tension: 0.3,
-      },
-    ],
-  }
-
-  // Prepare streak chart data
-  const streakChartData = {
-    labels: streakData.map((day) => {
-      const date = new Date(day.date)
-      return date.toLocaleDateString("en-US", { weekday: "short" })
-    }),
-    datasets: [
-      {
-        label: "Food Logged",
-        data: streakData.map((day) => (day.logged ? 1 : 0)),
-        backgroundColor: streakData.map((day) => (day.logged ? "#4CAF50" : "#E53935")),
-        borderColor: streakData.map((day) => (day.logged ? "#4CAF50" : "#E53935")),
-        borderWidth: 1,
       },
     ],
   }
@@ -505,73 +502,89 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Button asChild className="h-auto py-4 flex flex-col gap-2">
-              <Link href="/diary">
-                <CalendarDays className="h-8 w-8 mb-1" />
-                <span className="text-lg font-medium">View Diary</span>
-              </Link>
+            <Button
+              className={`h-auto py-4 flex flex-col gap-2 transition-all duration-300 ${
+                activeButton === "/diary" ? "scale-95 bg-primary/80" : ""
+              }`}
+              onClick={() => handleButtonClick("/diary")}
+            >
+              <CalendarDays className="h-8 w-8 mb-1" />
+              <span className="text-lg font-medium">View Diary</span>
             </Button>
 
-            <Button asChild className="h-auto py-4 flex flex-col gap-2">
-              <Link href="/log-food">
-                <Utensils className="h-8 w-8 mb-1" />
-                <span className="text-lg font-medium">Log Food</span>
-              </Link>
+            <Button
+              className={`h-auto py-4 flex flex-col gap-2 transition-all duration-300 ${
+                activeButton === "/log-food" ? "scale-95 bg-primary/80" : ""
+              }`}
+              onClick={() => handleButtonClick("/log-food")}
+            >
+              <Utensils className="h-8 w-8 mb-1" />
+              <span className="text-lg font-medium">Log Food</span>
             </Button>
 
-            <Button asChild className="h-auto py-4 flex flex-col gap-2">
-              <Link href="/log-weight">
-                <Weight className="h-8 w-8 mb-1" />
-                <span className="text-lg font-medium">Log Weight</span>
-              </Link>
+            <Button
+              className={`h-auto py-4 flex flex-col gap-2 transition-all duration-300 ${
+                activeButton === "/log-weight" ? "scale-95 bg-primary/80" : ""
+              }`}
+              onClick={() => handleButtonClick("/log-weight")}
+            >
+              <Weight className="h-8 w-8 mb-1" />
+              <span className="text-lg font-medium">Log Weight</span>
             </Button>
 
-            <Button asChild className="h-auto py-4 flex flex-col gap-2">
-              <Link href="/settings">
-                <Settings className="h-8 w-8 mb-1" />
-                <span className="text-lg font-medium">Settings</span>
-              </Link>
+            <Button
+              className={`h-auto py-4 flex flex-col gap-2 transition-all duration-300 ${
+                activeButton === "/settings" ? "scale-95 bg-primary/80" : ""
+              }`}
+              onClick={() => handleButtonClick("/settings")}
+            >
+              <Settings className="h-8 w-8 mb-1" />
+              <span className="text-lg font-medium">Settings</span>
             </Button>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Streak Chart */}
+            {/* Streak Chart - Redesigned as a 2x4 grid */}
             <Card className="border-primary/20">
               <CardHeader>
                 <CardTitle>Weekly Logging Streak</CardTitle>
-                <CardDescription>Your food logging activity for the past week</CardDescription>
+                <CardDescription>Your food logging activity for the past 8 days</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
+                <div className="h-64 flex flex-col">
                   {streakData.length > 0 ? (
-                    <div className="h-full">
-                      <div className="flex justify-between mb-2">
-                        {streakData.map((day, index) => (
-                          <div key={index} className="text-center">
-                            <div
-                              className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 ${
-                                day.logged ? "bg-green-500" : "bg-red-600"
-                              }`}
-                            >
-                              {day.logged ? "✓" : "✗"}
+                    <div className="flex-1 grid grid-cols-4 grid-rows-2 gap-2">
+                      {streakData.map((day, index) => (
+                        <div key={index} className="flex flex-col items-center">
+                          <div
+                            className={`w-full h-full flex flex-col items-center justify-center rounded-md border-2 ${
+                              day.logged ? "border-green-500" : "border-red-600"
+                            }`}
+                          >
+                            <div className="text-lg font-bold mb-2">{day.day}</div>
+                            <div className={`text-2xl ${day.logged ? "text-green-500" : "text-red-600"}`}>
+                              {day.logged ? <Check size={24} /> : "✗"}
                             </div>
-                            <div className="text-xs">
-                              {new Date(day.date).toLocaleDateString("en-US", { weekday: "short" })}
+                            <div className="text-xs mt-2">
+                              {new Date(day.date).toLocaleDateString("en-US", {
+                                month: "numeric",
+                                day: "numeric",
+                              })}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                      <div className="mt-4">
-                        <p className="text-center text-sm mb-2">
-                          You've logged food on {streakData.filter((day) => day.logged).length} of the last 7 days
-                        </p>
-                      </div>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="h-full flex items-center justify-center">
                       <p className="text-muted-foreground">No streak data available yet</p>
                     </div>
                   )}
+                  <div className="mt-4">
+                    <p className="text-center text-sm">
+                      You've logged food on {streakData.filter((day) => day.logged).length} of the last 8 days
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -632,8 +645,8 @@ export default function DashboardPage() {
               ) : (
                 <div className="text-center py-6">
                   <p className="text-muted-foreground">No activity logged today</p>
-                  <Button className="mt-4" asChild>
-                    <Link href="/log-food">Log Your First Meal</Link>
+                  <Button className="mt-4" onClick={() => handleButtonClick("/log-food")}>
+                    Log Your First Meal
                   </Button>
                 </div>
               )}

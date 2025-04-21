@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { AppHeader } from "@/components/app-header"
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, LogOut, Plus, Trash2, Edit } from "lucide-react"
+import { ArrowLeft, LogOut, Plus, Trash2, Edit, ChevronLeft, ChevronRight } from "lucide-react"
 import { getSupabaseBrowserClient } from "@/lib/supabase"
 import {
   Dialog,
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import debounce from "lodash.debounce"
 
 type UserProfile = {
   id: string
@@ -55,6 +56,8 @@ type CustomMeal = {
   total_fat: number
 }
 
+const ITEMS_PER_PAGE = 10
+
 export default function SettingsPage() {
   const router = useRouter()
   const [userData, setUserData] = useState<UserProfile | null>(null)
@@ -70,7 +73,32 @@ export default function SettingsPage() {
   const [availableFoods, setAvailableFoods] = useState<Food[]>([])
   const [selectedFoods, setSelectedFoods] = useState<number[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [editingMeal, setEditingMeal] = useState<CustomMeal | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+
+  // Pagination for food selection
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [displayedFoods, setDisplayedFoods] = useState<Food[]>([])
+
+  // Debounced search function
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedSearch = useCallback(
+    debounce((query: string) => {
+      setDebouncedSearchQuery(query)
+      setPage(1) // Reset to first page on new search
+      setIsSearching(false)
+    }, 300),
+    [],
+  )
+
+  useEffect(() => {
+    if (searchQuery !== debouncedSearchQuery) {
+      setIsSearching(true)
+      debouncedSearch(searchQuery)
+    }
+  }, [searchQuery, debouncedSearch, debouncedSearchQuery])
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -133,6 +161,31 @@ export default function SettingsPage() {
 
     fetchUserData()
   }, [router])
+
+  // Filter and paginate foods
+  useEffect(() => {
+    // Filter foods based on search query
+    const filteredFoods = availableFoods.filter(
+      (food) =>
+        food.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (food.dining_hall && food.dining_hall.toLowerCase().includes(debouncedSearchQuery.toLowerCase())),
+    )
+
+    // Calculate total pages
+    const calculatedTotalPages = Math.ceil(filteredFoods.length / ITEMS_PER_PAGE)
+    setTotalPages(calculatedTotalPages || 1)
+
+    // Ensure current page is valid
+    const validPage = Math.min(page, calculatedTotalPages || 1)
+    if (validPage !== page) {
+      setPage(validPage)
+    }
+
+    // Get foods for current page
+    const startIndex = (validPage - 1) * ITEMS_PER_PAGE
+    const endIndex = startIndex + ITEMS_PER_PAGE
+    setDisplayedFoods(filteredFoods.slice(startIndex, endIndex))
+  }, [availableFoods, debouncedSearchQuery, page])
 
   const handleUpdateUser = async () => {
     if (!userData) return
@@ -291,14 +344,20 @@ export default function SettingsPage() {
     setNewMealName(meal.name)
     setSelectedFoods(meal.foods)
     setShowCreateMeal(true)
+    setPage(1) // Reset to first page when editing
   }
 
-  // Filter foods based on search query
-  const filteredFoods = availableFoods.filter(
-    (food) =>
-      food.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (food.dining_hall && food.dining_hall.toLowerCase().includes(searchQuery.toLowerCase())),
-  )
+  const nextPage = () => {
+    if (page < totalPages) {
+      setPage(page + 1)
+    }
+  }
+
+  const prevPage = () => {
+    if (page > 1) {
+      setPage(page - 1)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -511,7 +570,7 @@ export default function SettingsPage() {
       </main>
 
       <Dialog open={showCreateMeal} onOpenChange={setShowCreateMeal}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingMeal ? "Edit Custom Meal" : "Create Custom Meal"}</DialogTitle>
             <DialogDescription>
@@ -520,7 +579,7 @@ export default function SettingsPage() {
                 : "Create a custom meal by selecting foods from the list below."}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 overflow-y-auto">
             <div className="grid gap-2">
               <Label htmlFor="meal-name">Meal Name</Label>
               <Input
@@ -571,9 +630,11 @@ export default function SettingsPage() {
             <div className="grid gap-2">
               <Label>Available Foods</Label>
               <ScrollArea className="h-60 border rounded-md p-2">
-                {filteredFoods.length > 0 ? (
+                {isSearching ? (
+                  <div className="text-center py-4 text-muted-foreground">Searching...</div>
+                ) : displayedFoods.length > 0 ? (
                   <div className="space-y-2">
-                    {filteredFoods.map((food) => (
+                    {displayedFoods.map((food) => (
                       <div key={food.id} className="flex items-center space-x-2">
                         <Checkbox
                           id={`food-${food.id}`}
@@ -599,9 +660,26 @@ export default function SettingsPage() {
                   <div className="text-center py-4 text-muted-foreground">No foods found matching your search</div>
                 )}
               </ScrollArea>
+
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-2">
+                  <Button variant="outline" size="sm" onClick={prevPage} disabled={page === 1}>
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    Page {page} of {totalPages}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={nextPage} disabled={page === totalPages}>
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button
               variant="outline"
               onClick={() => {
