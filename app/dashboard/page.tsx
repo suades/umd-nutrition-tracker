@@ -189,11 +189,18 @@ export default function DashboardPage() {
           throw weightError
         }
 
-        setWeightHistory(weightEntries || [])
+        setWeightHistory(
+          (weightEntries || []).map((entry) => ({
+            weight: entry.weight,
+            // Ensure date is properly formatted with timezone consideration
+            date: new Date(entry.date + "T00:00:00").toISOString().split("T")[0],
+          })),
+        )
 
         // Calculate streak data (last 8 days)
         const last8Days = Array.from({ length: 8 }, (_, i) => {
           const date = new Date()
+          date.setHours(0, 0, 0, 0) // Set to start of day
           date.setDate(date.getDate() - i)
           return date.toISOString().split("T")[0]
         }).reverse()
@@ -212,17 +219,21 @@ export default function DashboardPage() {
         // Get food entries for these diary entries
         const diaryIds = diaryEntries?.map((entry) => entry.id) || []
 
-        const { data: streakFoodEntries, error: streakFoodError } = await supabase
-          .from("food_entries")
-          .select("diary_id")
-          .in("diary_id", diaryIds)
+        // Only proceed if we have diary IDs
+        let diaryIdsWithFood = new Set()
+        if (diaryIds.length > 0) {
+          const { data: streakFoodEntries, error: streakFoodError } = await supabase
+            .from("food_entries")
+            .select("diary_id")
+            .in("diary_id", diaryIds)
 
-        if (streakFoodError) {
-          throw streakFoodError
+          if (streakFoodError) {
+            throw streakFoodError
+          }
+
+          // Create a set of diary IDs that have food entries
+          diaryIdsWithFood = new Set(streakFoodEntries?.map((entry) => entry.diary_id))
         }
-
-        // Create a set of diary IDs that have food entries
-        const diaryIdsWithFood = new Set(streakFoodEntries?.map((entry) => entry.diary_id))
 
         // Map diary entries to dates with food
         const diaryDatesWithFood = new Set(
@@ -231,7 +242,7 @@ export default function DashboardPage() {
 
         // Create streak data with day names
         const streak = last8Days.map((date) => {
-          const dayDate = new Date(date)
+          const dayDate = new Date(date + "T00:00:00")
           const dayName = dayDate.toLocaleDateString("en-US", { weekday: "short" })
           return {
             date,
@@ -304,7 +315,8 @@ export default function DashboardPage() {
   // Prepare weight chart data
   const weightChartData = {
     labels: weightHistory.map((entry) => {
-      const date = new Date(entry.date)
+      // Create date with proper timezone handling
+      const date = new Date(entry.date + "T00:00:00")
       return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
     }),
     datasets: [
@@ -566,7 +578,7 @@ export default function DashboardPage() {
                               {day.logged ? <Check size={24} /> : "✗"}
                             </div>
                             <div className="text-xs mt-2">
-                              {new Date(day.date).toLocaleDateString("en-US", {
+                              {new Date(new Date(day.date).getTime() + 86400000).toLocaleDateString("en-US", {
                                 month: "numeric",
                                 day: "numeric",
                               })}

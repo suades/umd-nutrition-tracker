@@ -60,8 +60,8 @@
     "zod": "^3.24.1",
     "chart.js": "latest",
     "@supabase/supabase-js": "latest",
-    "react-chartjs-2": "latest",
-    "lodash.debounce": "latest"
+    "lodash.debounce": "latest",
+    "react-chartjs-2": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

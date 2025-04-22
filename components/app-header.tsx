@@ -24,7 +24,7 @@ export function AppHeader() {
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/dashboard" className="text-xl font-bold text-primary">
-            UMD Nutrition Tracker
+            NutriTerp
           </Link>
         </div>
         <div className="flex items-center gap-4">

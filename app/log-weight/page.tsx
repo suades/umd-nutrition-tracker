@@ -231,7 +231,7 @@ export default function LogWeightPage() {
                       className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0"
                     >
                       <span>
-                        {new Date(entry.date).toLocaleDateString("en-US", {
+                        {new Date(entry.date + "T00:00:00").toLocaleDateString("en-US", {
                           month: "long",
                           day: "numeric",
                           year: "numeric",

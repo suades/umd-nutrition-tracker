@@ -85,7 +85,7 @@ export default function RegisterPage() {
           <div className="flex justify-center mb-2">
             <Activity className="h-12 w-12 text-primary" />
           </div>
-          <h1 className="text-4xl font-bold text-primary mb-2">UMD Nutrition Tracker</h1>
+          <h1 className="text-4xl font-bold text-primary mb-2">NutriTerp</h1>
           <p className="text-muted-foreground">Join the Terp nutrition community</p>
         </div>
 

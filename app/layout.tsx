@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "UMD Nutrition Tracker",
+  title: "NutriTerp",
   description: "Track your nutrition with the University of Maryland Nutrition Tracker",
     generator: 'v0.dev'
 }
